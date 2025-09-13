@@ -8,6 +8,8 @@
    ============================== */
 const SHEET_WEBHOOK = 'PASTE_YOUR_APPS_SCRIPT_WEB_APP_URL_HERE'; // e.g. https://script.google.com/macros/s/.../exec
 const SHEET_SECRET  = 'CHANGE_ME_LONG_RANDOM';                    // must match SECRET in Apps Script
+const STT_ENDPOINT = 'https://sinhala-stt-proxy-601787151206.australia-southeast1.run.app/stt';
+
 
 /* Optional identifiers */
 const USER_ID   = 'me';
