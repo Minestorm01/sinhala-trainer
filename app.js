@@ -1,22 +1,26 @@
 /* ============================================================================
-   Sinhala Trainer – Full app.js
-   Free PWA (GitHub Pages) + Google Sheets logging + Google Translate handoff
+   Sinhala Trainer – app.js with HUD (hearts, XP/level, streak)
    ========================================================================== */
 
 /* ==============================
-   CONFIG – EDIT THESE TWO LINES
+   CONFIG — paste YOUR values
    ============================== */
-const SHEET_WEBHOOK = 'https://script.google.com/macros/s/AKfycbyIg4Nf3pu73w9-Bint_kheWUhy-3m-pTaXipmSXWDQI4DoYlbf4DVZwakU6WZM0PvhEQ/exec'; // e.g. https://script.google.com/macros/s/.../exec
-const SHEET_SECRET  = 'sinhala12345secret';                    // must match SECRET in Apps Script
-const STT_ENDPOINT = 'https://sinhala-stt-proxy-601787151206.australia-southeast1.run.app/stt';
+const SHEET_WEBHOOK = 'YOUR_APPS_SCRIPT_WEB_APP_URL';
+const SHEET_SECRET  = 'YOUR_SECRET_STRING';
+const STT_ENDPOINT  = 'https://sinhala-stt-proxy-601787151206.australia-southeast1.run.app/stt';
 
+/* Game tuning (HUD logic only) */
+const PASS_SCORE      = 85;   // >= pass counts as correct
+const XP_PER_CORRECT  = 10;   // XP per correct card
+const HEARTS_MAX      = 5;    // total hearts shown
+const HEART_REFILL_HR = 4;    // +1 heart every 4h if below max
 
 /* Optional identifiers */
 const USER_ID   = 'me';
 const LESSON_ID = 'greetings_01';
 
 /* ==========================================
-   LESSON CONTENT (add more as you progress)
+   LESSON CONTENT
    ========================================== */
 const CARDS = [
   { id:'g1',  en:'Hello',               si:'හෙලෝ',                    hint:'he-lo / aa-yu-bo-wan' },
@@ -32,96 +36,115 @@ const CARDS = [
 ];
 
 /* =================
-   STATE + SHORTCUTS
+   STATE + UI HOOKS
    ================= */
 let i = 0; // current card index
 const $ = s => document.querySelector(s);
 
-/* DOM elements */
+/* DOM */
 const promptEN     = $('#prompt_en');
 const promptSI     = $('#prompt_si');
 const hint         = $('#hint');
 const heard        = $('#heard');
 const scoreBox     = $('#score');
 const wordFeedback = $('#wordFeedback');
+const btnMic       = $('#btnMic');
+const btnPlay      = $('#btnPlay');
+const btnSlow      = $('#btnSlow');
+const btnNext      = $('#btnNext');
+const btnCheck     = $('#btnCheck');
+const btnOpenGT    = $('#btnOpenGT');
+const btnPasteCheck= $('#btnPasteCheck');
+const heartsEl     = $('#hearts');
+const xplabel      = $('#xplabel');
+const xpfill       = $('#xpfill');
+const levelEl      = $('#level');
+const streakEl     = $('#streak');
 
-const btnPlay       = $('#btnPlay');
-const btnSlow       = $('#btnSlow');
-const btnNext       = $('#btnNext');
-const btnCheck      = $('#btnCheck');
-const btnOpenGT     = document.querySelector('#btnOpenGT');
-const btnPasteCheck = document.querySelector('#btnPasteCheck');
-/* =========================
-   MIC RECORDING + STT (GCP)
-   ========================= */
-// Convert Blob -> base64
-async function blobToBase64(blob) {
-  const buf = await blob.arrayBuffer();
-  const bytes = new Uint8Array(buf);
-  let binary = '';
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  return btoa(binary);
+/* =================
+   GAME STATE (HUD)
+   ================= */
+const store = {
+  load() { try { return JSON.parse(localStorage.getItem('game')||'') || null } catch(e){ return null } },
+  save(s) { localStorage.setItem('game', JSON.stringify(s)); }
+};
+function newGame(){
+  return {
+    hearts: HEARTS_MAX,
+    xp: 0,
+    level: 1,
+    streak: 0,
+    lastPlayDate: null,
+    lastHeartAt: Date.now()
+  };
 }
+let GAME = store.load() || newGame();
 
-// Record ~4s of WebM/Opus (works on iOS Safari)
-async function startRecording() {
-  if (!navigator.mediaDevices?.getUserMedia) {
-    alert("Microphone not available in this browser.");
-    return null;
+// Refill hearts slowly (if under max)
+function maybeRefillHearts(){
+  if (GAME.hearts >= HEARTS_MAX) return;
+  const hours = (Date.now() - (GAME.lastHeartAt||0)) / 3600000;
+  const gained = Math.floor(hours / HEART_REFILL_HR);
+  if (gained > 0){
+    GAME.hearts = Math.min(HEARTS_MAX, GAME.hearts + gained);
+    GAME.lastHeartAt = Date.now();
+    store.save(GAME);
   }
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-    ? 'audio/webm;codecs=opus'
-    : 'audio/webm';
-  const chunks = [];
-  const rec = new MediaRecorder(stream, { mimeType: mime });
-  return new Promise(resolve => {
-    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
-    rec.onstop = () => {
-      stream.getTracks().forEach(t => t.stop());
-      resolve(new Blob(chunks, { type: mime }));
-    };
-    rec.start();
-    // auto-stop after 4s (short phrase UX)
-    setTimeout(() => rec.state !== 'inactive' && rec.stop(), 4000);
-  });
 }
 
-// Send audio to your Cloud Run STT proxy
-async function sttTranscribe(blob) {
-  const audioBase64 = await blobToBase64(blob);
-  const resp = await fetch(STT_ENDPOINT, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ audioBase64, mimeType: blob.type })
-  });
-  const data = await resp.json();
-  if (!data.ok) throw new Error(data.error || 'stt_failed');
-  return (data.transcript || '').trim();
+function updateHUD(){
+  maybeRefillHearts();
+  // Hearts
+  heartsEl.innerHTML = '❤️'.repeat(GAME.hearts) + '<span class="muted">'+ '🖤'.repeat(HEARTS_MAX - GAME.hearts) + '</span>';
+  // XP/Level — simple 100 XP per level
+  const inLevelXP = GAME.xp % 100;
+  xplabel.textContent = `${inLevelXP} / 100 XP`;
+  xpfill.style.width = `${inLevelXP}%`;
+  levelEl.textContent = GAME.level;
+  streakEl.textContent = GAME.streak;
+  // Disable actions if out of hearts
+  const out = GAME.hearts === 0;
+  if (btnMic)   btnMic.disabled   = out;
+  if (btnCheck) btnCheck.disabled = out;
 }
 
-// Bind the mic button
-const btnMic = document.querySelector('#btnMic');
-if (btnMic) {
-  btnMic.addEventListener('click', async () => {
-    try {
-      scoreBox.textContent = 'Listening…';
-      wordFeedback.innerHTML = '';
-      const blob = await startRecording();
-      if (!blob) { scoreBox.textContent = ''; return; }
-      scoreBox.textContent = 'Transcribing…';
-      const transcript = await sttTranscribe(blob);
-      heard.value = transcript;
-      doCheck(); // reuse your existing scoring + save
-    } catch (e) {
-      console.error(e);
-      scoreBox.textContent = '';
-      alert('Could not capture/transcribe. Check mic permission & HTTPS.');
+function addXP(n){
+  const before = GAME.xp;
+  GAME.xp += n;
+  const leveled = Math.floor(GAME.xp / 100) > Math.floor(before / 100);
+  if (leveled) GAME.level += 1;
+  store.save(GAME);
+  updateHUD();
+}
+
+function loseHeart(){
+  if (GAME.hearts <= 0) return;
+  GAME.hearts -= 1;
+  if (GAME.hearts === 0){
+    scoreBox.textContent = 'Out of hearts — come back later!';
+  }
+  store.save(GAME);
+  updateHUD();
+}
+
+function bumpStreakIfNewDay(){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const last = GAME.lastPlayDate ? new Date(GAME.lastPlayDate) : null;
+  const isFirstActionThisLaunch = !last || last.getTime() !== today.getTime();
+  if (isFirstActionThisLaunch){
+    if (!last) GAME.streak = 1;
+    else {
+      const diffDays = Math.round((today - last) / 86400000);
+      GAME.streak = diffDays === 1 ? GAME.streak + 1 : 1;
     }
-  });
+    GAME.lastPlayDate = today.toISOString();
+    store.save(GAME);
+    updateHUD();
+  }
 }
+
 /* ==============
-   CARD RENDERING
+   RENDER CARD
    ============== */
 function loadCard() {
   const c = CARDS[i];
@@ -131,69 +154,59 @@ function loadCard() {
   heard.value = '';
   scoreBox.textContent = '';
   wordFeedback.innerHTML = '';
+  updateHUD();
 }
 
 /* =======
-   SPEECH
+   TTS
    ======= */
 function speak(text, rate = 1.0) {
   if (!('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text);
-  // Try Sinhala; if engine lacks it, it will still read the script reasonably
   u.lang = 'si-LK';
   u.rate = rate;
-  // Cancel any ongoing utterance to avoid overlaps
   speechSynthesis.cancel();
   speechSynthesis.speak(u);
 }
 
 /* ======================
-   TOKENIZE + SCORE LOGIC
+   TOKENIZE + SCORE
    ====================== */
 function tokenize(t) {
   return (t || '')
-    .toLowerCase()               // Sinhala has no case; harmless for latin/phonetic hints
-    .replace(/[?.,!…]/g, '')     // strip punctuation
-    .split(/\s+/)                // split on spaces
+    .toLowerCase()
+    .replace(/[?.,!…]/g, '')
+    .split(/\s+/)
     .filter(Boolean);
 }
 
-// Sørensen–Dice coefficient on word bags, with simple multiplicity handling
 function scoreMatch(target, heardText) {
   const T = tokenize(target);
   const H = tokenize(heardText);
   if (!T.length && !H.length) return { score: 100, chips: '' };
   if (!T.length || !H.length)  return { score: 0,   chips: '' };
-
-  // bag of words for target with counts
   const bag = new Map();
   for (const w of T) bag.set(w, (bag.get(w) || 0) + 1);
-
   let matches = 0;
   for (const w of H) {
     const n = bag.get(w) || 0;
     if (n > 0) { matches++; bag.set(w, n - 1); }
   }
-
   const score = Math.round(100 * (2 * matches) / (T.length + H.length));
-
-  // Per-word chips (T words): green if present in H, amber/red by global score otherwise
-  const Hset = new Set(tokenize(heardText));
+  const Hset = new Set(H);
   const chips = T.map(w => {
     const inHeard = Hset.has(w);
-    let cls;
-    if (inHeard) cls = 'g';
-    else cls = score >= 70 ? 'a' : 'r';
+    let cls = inHeard ? 'g' : (score >= 70 ? 'a' : 'r');
     return `<span class="chip ${cls}">${w}</span>`;
   }).join(' ');
-
   return { score, chips };
 }
 
 /* =================
-   CLOUD SAVE (SHEET)
+   SHEET LOGGING
    ================= */
 async function saveResult(card, heardText, score) {
+  if (!SHEET_WEBHOOK || !SHEET_SECRET) return;
   try {
     await fetch(SHEET_WEBHOOK, {
       method: 'POST',
@@ -209,58 +222,54 @@ async function saveResult(card, heardText, score) {
       })
     });
   } catch (e) {
-    // Likely offline or permissions prompt; we silently continue.
     console.log('Save failed or offline; continuing.', e);
   }
 }
 
-/* ===========================
-   GOOGLE TRANSLATE INTEGRATION
-   =========================== */
-// Open Google Translate (web). iOS will prefer app if installed via universal link.
-function openGoogleTranslate() {
-  // Sinhala source (sl=si), English target (tl=en) – adjust tl if you prefer.
-  const webUrl = 'https://translate.google.com/?sl=si&tl=en';
-  window.open(webUrl, '_blank', 'noopener,noreferrer');
+/* =========================
+   MIC RECORDING + STT (GCP)
+   ========================= */
+async function blobToBase64(blob) {
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
 }
-
-// Paste from clipboard and immediately check (requires user gesture on iOS)
-async function pasteAndCheck() {
-  try {
-    const clip = await navigator.clipboard.readText();
-    if (clip && clip.trim()) {
-      heard.value = clip.trim();
-      doCheck(); // reuse check flow
-    } else {
-      alert('Clipboard is empty.\nIn Google Translate: copy the Sinhala result, come back, then tap “Paste & Check”.');
-    }
-  } catch (e) {
-    alert('Couldn’t read clipboard.\nOn iPhone: ensure you tapped this button directly and allow paste permission.');
+async function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("Microphone not available.");
+    return null;
   }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus' : 'audio/webm';
+  const chunks = [];
+  const rec = new MediaRecorder(stream, { mimeType: mime });
+  return new Promise(resolve => {
+    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      resolve(new Blob(chunks, { type: mime }));
+    };
+    rec.start();
+    setTimeout(() => rec.state !== 'inactive' && rec.stop(), 4000);
+  });
 }
-
-/* ===========================================
-   URL HANDOFF FROM iOS SHORTCUT (?heard=...)
-   =========================================== */
-function getParam(name) {
-  // also handle hash as query for Shortcut variants
-  const url = new URL(window.location.href.replace('#', '?'));
-  return url.searchParams.get(name);
-}
-
-function autoFillAndCheckFromURL() {
-  const incoming = getParam('heard');
-  if (!incoming) return;
-  const text = decodeURIComponent(incoming).trim();
-  if (!text) return;
-  heard.value = text;
-  doCheck();
-  // Clean the URL to avoid re-using the param on refresh
-  history.replaceState({}, '', location.pathname);
+async function sttTranscribe(blob) {
+  const audioBase64 = await blobToBase64(blob);
+  const resp = await fetch(STT_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioBase64, mimeType: blob.type })
+  });
+  const data = await resp.json();
+  if (!data.ok) throw new Error(data.error || 'stt_failed');
+  return (data.transcript || '').trim();
 }
 
 /* ===========
-   UI HANDLERS
+   HANDLERS
    =========== */
 function doCheck() {
   const c = CARDS[i];
@@ -269,26 +278,60 @@ function doCheck() {
   scoreBox.textContent = `Score: ${score}/100`;
   wordFeedback.innerHTML = chips;
   saveResult(c, heardText, score);
+
+  // --- HUD mechanics (light-touch)
+  if (score >= PASS_SCORE) {
+    addXP(XP_PER_CORRECT);
+    bumpStreakIfNewDay();
+  } else {
+    loseHeart();
+  }
 }
 
-/* Bind events */
+if (btnMic) {
+  btnMic.addEventListener('click', async () => {
+    try {
+      if (GAME.hearts === 0) return;
+      scoreBox.textContent = 'Listening…';
+      wordFeedback.innerHTML = '';
+      const blob = await startRecording();
+      if (!blob) { scoreBox.textContent = ''; return; }
+      scoreBox.textContent = 'Transcribing…';
+      const transcript = await sttTranscribe(blob);
+      heard.value = transcript;
+      doCheck();
+    } catch (e) {
+      console.error(e);
+      scoreBox.textContent = '';
+      alert('Could not capture/transcribe.');
+    }
+  });
+}
 if (btnPlay)       btnPlay.addEventListener('click', () => speak(CARDS[i].si, 1.0));
 if (btnSlow)       btnSlow.addEventListener('click', () => speak(CARDS[i].si, 0.75));
 if (btnNext)       btnNext.addEventListener('click', () => { i = (i + 1) % CARDS.length; loadCard(); });
 if (btnCheck)      btnCheck.addEventListener('click', doCheck);
-if (btnOpenGT)     btnOpenGT.addEventListener('click', openGoogleTranslate);
-if (btnPasteCheck) btnPasteCheck.addEventListener('click', pasteAndCheck);
+if (btnOpenGT)     btnOpenGT.addEventListener('click', () => window.open('https://translate.google.com/?sl=si&tl=en', '_blank', 'noopener,noreferrer'));
+if (btnPasteCheck) btnPasteCheck.addEventListener('click', async () => {
+  try { const clip = await navigator.clipboard.readText(); if (clip && clip.trim()) { heard.value = clip.trim(); doCheck(); } else { alert('Clipboard is empty.'); } }
+  catch { alert('Allow paste permission and try again.'); }
+});
 
 /* ======================
-   STARTUP + PWA SERVICE
+   STARTUP
    ====================== */
 function init() {
   loadCard();
-  autoFillAndCheckFromURL();
-  // Register service worker for offline support (if present)
+  // If you use the ?heard=... Shortcut flow, keep this tiny helper:
+  const url = new URL(window.location.href.replace('#','?'));
+  const incoming = url.searchParams.get('heard');
+  if (incoming) {
+    heard.value = decodeURIComponent(incoming).trim();
+    doCheck();
+    history.replaceState({}, '', location.pathname);
+  }
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
+    navigator.serviceWorker.register('./sw.js').catch(()=>{});
   }
 }
-
 document.addEventListener('DOMContentLoaded', init);
