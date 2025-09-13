@@ -51,7 +51,75 @@ const btnNext       = $('#btnNext');
 const btnCheck      = $('#btnCheck');
 const btnOpenGT     = document.querySelector('#btnOpenGT');
 const btnPasteCheck = document.querySelector('#btnPasteCheck');
+/* =========================
+   MIC RECORDING + STT (GCP)
+   ========================= */
+// Convert Blob -> base64
+async function blobToBase64(blob) {
+  const buf = await blob.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
 
+// Record ~4s of WebM/Opus (works on iOS Safari)
+async function startRecording() {
+  if (!navigator.mediaDevices?.getUserMedia) {
+    alert("Microphone not available in this browser.");
+    return null;
+  }
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+    ? 'audio/webm;codecs=opus'
+    : 'audio/webm';
+  const chunks = [];
+  const rec = new MediaRecorder(stream, { mimeType: mime });
+  return new Promise(resolve => {
+    rec.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+    rec.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      resolve(new Blob(chunks, { type: mime }));
+    };
+    rec.start();
+    // auto-stop after 4s (short phrase UX)
+    setTimeout(() => rec.state !== 'inactive' && rec.stop(), 4000);
+  });
+}
+
+// Send audio to your Cloud Run STT proxy
+async function sttTranscribe(blob) {
+  const audioBase64 = await blobToBase64(blob);
+  const resp = await fetch(STT_ENDPOINT, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ audioBase64, mimeType: blob.type })
+  });
+  const data = await resp.json();
+  if (!data.ok) throw new Error(data.error || 'stt_failed');
+  return (data.transcript || '').trim();
+}
+
+// Bind the mic button
+const btnMic = document.querySelector('#btnMic');
+if (btnMic) {
+  btnMic.addEventListener('click', async () => {
+    try {
+      scoreBox.textContent = 'Listening…';
+      wordFeedback.innerHTML = '';
+      const blob = await startRecording();
+      if (!blob) { scoreBox.textContent = ''; return; }
+      scoreBox.textContent = 'Transcribing…';
+      const transcript = await sttTranscribe(blob);
+      heard.value = transcript;
+      doCheck(); // reuse your existing scoring + save
+    } catch (e) {
+      console.error(e);
+      scoreBox.textContent = '';
+      alert('Could not capture/transcribe. Check mic permission & HTTPS.');
+    }
+  });
+}
 /* ==============
    CARD RENDERING
    ============== */
