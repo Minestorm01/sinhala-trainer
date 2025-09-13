@@ -1,47 +1,83 @@
-/* ============================================================================
-   Sinhala Trainer – app.js with HUD (hearts, XP/level, streak)
+============================================================================
+   Sinhala Trainer – Duolingo-like home path + lesson view + HUD
    ========================================================================== */
 
 /* ==============================
-   CONFIG — paste YOUR values
+   CONFIG (keep your values)
    ============================== */
-const SHEET_WEBHOOK = 'YOUR_APPS_SCRIPT_WEB_APP_URL';
-const SHEET_SECRET  = 'YOUR_SECRET_STRING';
+const SHEET_WEBHOOK = 'https://script.google.com/macros/s/AKfycbyIg4Nf3pu73w9-Bint_kheWUhy-3m-pTaXipmSXWDQI4DoYlbf4DVZwakU6WZM0PvhEQ/exec';
+const SHEET_SECRET  = 'sinhala12345secret';
 const STT_ENDPOINT  = 'https://sinhala-stt-proxy-601787151206.australia-southeast1.run.app/stt';
 
-/* Game tuning (HUD logic only) */
-const PASS_SCORE      = 85;   // >= pass counts as correct
-const XP_PER_CORRECT  = 10;   // XP per correct card
-const HEARTS_MAX      = 5;    // total hearts shown
-const HEART_REFILL_HR = 4;    // +1 heart every 4h if below max
+/* Game tuning */
+const PASS_SCORE      = 85;
+const XP_PER_CORRECT  = 10;
+const XP_LESSON_BONUS = 20;
+const HEARTS_MAX      = 5;
+const HEART_REFILL_HR = 4;
 
-/* Optional identifiers */
-const USER_ID   = 'me';
-const LESSON_ID = 'greetings_01';
-
-/* ==========================================
-   LESSON CONTENT
-   ========================================== */
-const CARDS = [
-  { id:'g1',  en:'Hello',               si:'හෙලෝ',                    hint:'he-lo / aa-yu-bo-wan' },
-  { id:'g2',  en:'How are you?',        si:'ඔයාට කොහොම ද?',           hint:'o-yaa-ta ko-ho-ma da?' },
-  { id:'g3',  en:'I’m good',            si:'මට හොඳයි',                 hint:'ma-ta hon-dai' },
-  { id:'g4',  en:'Thank you',           si:'ස්තුතියි',                 hint:'sthuthi-yi' },
-  { id:'g5',  en:'Please',              si:'කරුණාකර',                   hint:'karu-naa-ka-ra' },
-  { id:'g6',  en:'Yes',                 si:'ඔව්',                       hint:'ov' },
-  { id:'g7',  en:'No',                  si:'නැහැ',                      hint:'næ-hæ' },
-  { id:'g8',  en:'What is your name?',  si:'ඔයාගේ නම මොකක්ද?',         hint:'o-yaa-ge na-ma mo-kak-da?' },
-  { id:'g9',  en:'My name is …',        si:'මගේ නම …',                  hint:'ma-ge na-ma …' },
-  { id:'g10', en:'See you later',       si:'ඉඳලා එන්නම්',               hint:'indalaa en-nam' }
+/* ==============================
+   COURSE STRUCTURE (Home Path)
+   ============================== */
+const COURSE = [
+  {
+    section: "Section 1",
+    units: [
+      { id:"u1", title:"Greetings",    icon:"🟢", lessons:[ "greet_1", "greet_2" ]},
+      { id:"u2", title:"Introduce",    icon:"🟢", lessons:[ "intro_1" ], lockAfter:"u1" },
+      { id:"u3", title:"Food & Drink", icon:"🟢", lessons:[ "food_1" ],  lockAfter:"u2" },
+      { id:"u4", title:"Describe",     icon:"🟢", lessons:[ "desc_1" ],  lockAfter:"u3" }
+    ]
+  }
 ];
+
+/* Map: lessonId -> cards */
+const LESSON_CARDS = {
+  greet_1: [
+    { id:'g1', en:'Hello',               si:'හෙලෝ',                    hint:'he-lo / aa-yu-bo-wan' },
+    { id:'g2', en:'How are you?',        si:'ඔයාට කොහොම ද?',           hint:'o-yaa-ta ko-ho-ma da?' },
+    { id:'g3', en:'I’m good',            si:'මට හොඳයි',                 hint:'ma-ta hon-dai' }
+  ],
+  greet_2: [
+    { id:'g4', en:'Thank you',           si:'ස්තුතියි',                 hint:'sthuthi-yi' },
+    { id:'g5', en:'Please',              si:'කරුණාකර',                   hint:'karu-naa-ka-ra' },
+    { id:'g6', en:'Yes',                 si:'ඔව්',                       hint:'ov' },
+    { id:'g7', en:'No',                  si:'නැහැ',                      hint:'næ-hæ' }
+  ],
+  intro_1: [
+    { id:'g8',  en:'What is your name?', si:'ඔයාගේ නම මොකක්ද?',         hint:'o-yaa-ge na-ma mo-kak-da?' },
+    { id:'g9',  en:'My name is …',       si:'මගේ නම …',                  hint:'ma-ge na-ma …' },
+    { id:'g10', en:'See you later',      si:'ඉඳලා එන්නම්',               hint:'indalaa en-nam' }
+  ],
+  food_1: [
+    { id:'f1', en:'Rice',                si:'බත්',                       hint:'bath' },
+    { id:'f2', en:'Water',               si:'වතුර',                      hint:'wathura' },
+    { id:'f3', en:'Tea',                 si:'තේ',                        hint:'they' }
+  ],
+  desc_1: [
+    { id:'d1', en:'Big',                 si:'ලොකු',                      hint:'loku' },
+    { id:'d2', en:'Small',               si:'පොඩි',                      hint:'podi' },
+    { id:'d3', en:'Beautiful',           si:'ලස්සන',                     hint:'lassana' }
+  ]
+};
 
 /* =================
    STATE + UI HOOKS
    ================= */
-let i = 0; // current card index
-const $ = s => document.querySelector(s);
+let CURRENT_LESSON = null;
+let CARDS = [];
+let i = 0;
 
-/* DOM */
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+/* Views */
+const viewHome   = $('#home');
+const viewLesson = $('#lesson');
+const navHome    = $('#navHome');
+const backHome   = $('#backHome');
+
+/* HUD & lesson elements */
 const promptEN     = $('#prompt_en');
 const promptSI     = $('#prompt_si');
 const hint         = $('#hint');
@@ -60,27 +96,21 @@ const xplabel      = $('#xplabel');
 const xpfill       = $('#xpfill');
 const levelEl      = $('#level');
 const streakEl     = $('#streak');
+const resetHearts  = $('#resetHearts');
 
 /* =================
    GAME STATE (HUD)
    ================= */
 const store = {
-  load() { try { return JSON.parse(localStorage.getItem('game')||'') || null } catch(e){ return null } },
-  save(s) { localStorage.setItem('game', JSON.stringify(s)); }
+  load(key, fallback){ try { return JSON.parse(localStorage.getItem(key)||'') ?? fallback } catch(e){ return fallback } },
+  save(key,val){ localStorage.setItem(key, JSON.stringify(val)); }
 };
 function newGame(){
-  return {
-    hearts: HEARTS_MAX,
-    xp: 0,
-    level: 1,
-    streak: 0,
-    lastPlayDate: null,
-    lastHeartAt: Date.now()
-  };
+  return { hearts: HEARTS_MAX, xp: 0, level: 1, streak: 0, lastPlayDate: null, lastHeartAt: Date.now() };
 }
-let GAME = store.load() || newGame();
+let GAME = store.load('game', newGame());
+let PROGRESS = store.load('progress', { done: {} }); // done[lessonId] = true
 
-// Refill hearts slowly (if under max)
 function maybeRefillHearts(){
   if (GAME.hearts >= HEARTS_MAX) return;
   const hours = (Date.now() - (GAME.lastHeartAt||0)) / 3600000;
@@ -88,69 +118,122 @@ function maybeRefillHearts(){
   if (gained > 0){
     GAME.hearts = Math.min(HEARTS_MAX, GAME.hearts + gained);
     GAME.lastHeartAt = Date.now();
-    store.save(GAME);
+    store.save('game', GAME);
   }
 }
-
 function updateHUD(){
   maybeRefillHearts();
-  // Hearts
   heartsEl.innerHTML = '❤️'.repeat(GAME.hearts) + '<span class="muted">'+ '🖤'.repeat(HEARTS_MAX - GAME.hearts) + '</span>';
-  // XP/Level — simple 100 XP per level
   const inLevelXP = GAME.xp % 100;
   xplabel.textContent = `${inLevelXP} / 100 XP`;
   xpfill.style.width = `${inLevelXP}%`;
   levelEl.textContent = GAME.level;
   streakEl.textContent = GAME.streak;
-  // Disable actions if out of hearts
   const out = GAME.hearts === 0;
   if (btnMic)   btnMic.disabled   = out;
   if (btnCheck) btnCheck.disabled = out;
 }
-
 function addXP(n){
   const before = GAME.xp;
   GAME.xp += n;
   const leveled = Math.floor(GAME.xp / 100) > Math.floor(before / 100);
   if (leveled) GAME.level += 1;
-  store.save(GAME);
+  store.save('game', GAME);
   updateHUD();
 }
-
 function loseHeart(){
   if (GAME.hearts <= 0) return;
   GAME.hearts -= 1;
-  if (GAME.hearts === 0){
-    scoreBox.textContent = 'Out of hearts — come back later!';
-  }
-  store.save(GAME);
+  store.save('game', GAME);
   updateHUD();
 }
-
 function bumpStreakIfNewDay(){
   const today = new Date(); today.setHours(0,0,0,0);
   const last = GAME.lastPlayDate ? new Date(GAME.lastPlayDate) : null;
-  const isFirstActionThisLaunch = !last || last.getTime() !== today.getTime();
-  if (isFirstActionThisLaunch){
+  const isFirstAction = !last || last.getTime() !== today.getTime();
+  if (isFirstAction){
     if (!last) GAME.streak = 1;
     else {
       const diffDays = Math.round((today - last) / 86400000);
       GAME.streak = diffDays === 1 ? GAME.streak + 1 : 1;
     }
     GAME.lastPlayDate = today.toISOString();
-    store.save(GAME);
+    store.save('game', GAME);
     updateHUD();
   }
 }
+resetHearts?.addEventListener('click', ()=>{ GAME.hearts = HEARTS_MAX; store.save('game', GAME); updateHUD(); });
+
+/* =======================
+   HOME PATH RENDER
+   ======================= */
+function isUnitLocked(unit){
+  if (!unit.lockAfter) return false;
+  const prev = unit.lockAfter;
+  const prevLessons = COURSE.flatMap(s => s.units).find(u => u.id === prev)?.lessons || [];
+  return !prevLessons.every(lid => !!PROGRESS.done[lid]);
+}
+function makeNode(lessonId, title, status){
+  const div = document.createElement('div');
+  div.className = 'node ' + (status==='play'?'play':status==='done'?'done':'lock');
+  div.dataset.lesson = lessonId;
+  div.innerHTML = `<div class="badge">${status==='done'?'★':'▶'}</div><div class="icon">🦉</div><div class="title">${title}</div>`;
+  if (status!=='lock'){
+    div.addEventListener('click', ()=> startLesson(lessonId));
+  }
+  return div;
+}
+function renderHome(){
+  const container = $('#homePath');
+  container.innerHTML = '';
+  COURSE.forEach(sec => {
+    const h = document.createElement('div');
+    h.className = 'section';
+    h.textContent = sec.section;
+    container.appendChild(h);
+    const path = document.createElement('div');
+    path.className = 'path card';
+    // Units
+    sec.units.forEach(unit => {
+      const locked = isUnitLocked(unit);
+      unit.lessons.forEach((lid, idx) => {
+        const title = `${unit.title} ${unit.lessons.length>1?idx+1:''}`.trim();
+        const status = PROGRESS.done[lid] ? 'done' : (locked ? 'lock' : 'play');
+        path.appendChild(makeNode(lid, title, status));
+      });
+    });
+    container.appendChild(path);
+  });
+  switchView('home');
+}
+
+/* ======================
+   LESSON VIEW + LOGIC
+   ====================== */
+function startLesson(lessonId){
+  CURRENT_LESSON = lessonId;
+  CARDS = LESSON_CARDS[lessonId] || [];
+  i = 0;
+  loadCard();
+  switchView('lesson');
+}
+function finishLesson(){
+  PROGRESS.done[CURRENT_LESSON] = true;
+  store.save('progress', PROGRESS);
+  addXP(XP_LESSON_BONUS);
+  bumpStreakIfNewDay();
+  switchView('home');
+  renderHome();
+}
 
 /* ==============
-   RENDER CARD
+   CARD RENDERING
    ============== */
 function loadCard() {
   const c = CARDS[i];
-  promptEN.textContent = c.en;
-  promptSI.textContent = c.si;
-  hint.textContent = c.hint || '';
+  promptEN.textContent = c?.en || '';
+  promptSI.textContent = c?.si || '';
+  hint.textContent = c?.hint || '';
   heard.value = '';
   scoreBox.textContent = '';
   wordFeedback.innerHTML = '';
@@ -158,7 +241,7 @@ function loadCard() {
 }
 
 /* =======
-   TTS
+   SPEECH
    ======= */
 function speak(text, rate = 1.0) {
   if (!('speechSynthesis' in window)) return;
@@ -170,7 +253,7 @@ function speak(text, rate = 1.0) {
 }
 
 /* ======================
-   TOKENIZE + SCORE
+   TOKENIZE + SCORE LOGIC
    ====================== */
 function tokenize(t) {
   return (t || '')
@@ -179,7 +262,6 @@ function tokenize(t) {
     .split(/\s+/)
     .filter(Boolean);
 }
-
 function scoreMatch(target, heardText) {
   const T = tokenize(target);
   const H = tokenize(heardText);
@@ -203,27 +285,24 @@ function scoreMatch(target, heardText) {
 }
 
 /* =================
-   SHEET LOGGING
+   CLOUD SAVE (SHEET)
    ================= */
 async function saveResult(card, heardText, score) {
-  if (!SHEET_WEBHOOK || !SHEET_SECRET) return;
   try {
     await fetch(SHEET_WEBHOOK, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         secret:   SHEET_SECRET,
-        user:     USER_ID,
-        lesson_id:LESSON_ID,
+        user:     'me',
+        lesson_id: CURRENT_LESSON || 'unknown',
         card_id:  card.id,
         target:   card.si,
         heard:    heardText,
         score
       })
     });
-  } catch (e) {
-    console.log('Save failed or offline; continuing.', e);
-  }
+  } catch {}
 }
 
 /* =========================
@@ -269,7 +348,7 @@ async function sttTranscribe(blob) {
 }
 
 /* ===========
-   HANDLERS
+   UI HANDLERS
    =========== */
 function doCheck() {
   const c = CARDS[i];
@@ -278,55 +357,68 @@ function doCheck() {
   scoreBox.textContent = `Score: ${score}/100`;
   wordFeedback.innerHTML = chips;
   saveResult(c, heardText, score);
-
-  // --- HUD mechanics (light-touch)
   if (score >= PASS_SCORE) {
     addXP(XP_PER_CORRECT);
-    bumpStreakIfNewDay();
   } else {
     loseHeart();
   }
 }
-
-if (btnMic) {
-  btnMic.addEventListener('click', async () => {
-    try {
-      if (GAME.hearts === 0) return;
-      scoreBox.textContent = 'Listening…';
-      wordFeedback.innerHTML = '';
-      const blob = await startRecording();
-      if (!blob) { scoreBox.textContent = ''; return; }
-      scoreBox.textContent = 'Transcribing…';
-      const transcript = await sttTranscribe(blob);
-      heard.value = transcript;
-      doCheck();
-    } catch (e) {
-      console.error(e);
-      scoreBox.textContent = '';
-      alert('Could not capture/transcribe.');
-    }
-  });
-}
-if (btnPlay)       btnPlay.addEventListener('click', () => speak(CARDS[i].si, 1.0));
-if (btnSlow)       btnSlow.addEventListener('click', () => speak(CARDS[i].si, 0.75));
-if (btnNext)       btnNext.addEventListener('click', () => { i = (i + 1) % CARDS.length; loadCard(); });
-if (btnCheck)      btnCheck.addEventListener('click', doCheck);
-if (btnOpenGT)     btnOpenGT.addEventListener('click', () => window.open('https://translate.google.com/?sl=si&tl=en', '_blank', 'noopener,noreferrer'));
-if (btnPasteCheck) btnPasteCheck.addEventListener('click', async () => {
+btnMic?.addEventListener('click', async () => {
+  try {
+    if (GAME.hearts === 0) return;
+    scoreBox.textContent = 'Listening…';
+    wordFeedback.innerHTML = '';
+    const blob = await startRecording();
+    if (!blob) { scoreBox.textContent = ''; return; }
+    scoreBox.textContent = 'Transcribing…';
+    const transcript = await sttTranscribe(blob);
+    heard.value = transcript;
+    doCheck();
+  } catch (e) {
+    console.error(e);
+    scoreBox.textContent = '';
+    alert('Could not capture/transcribe.');
+  }
+});
+btnPlay?.addEventListener('click', () => speak(CARDS[i]?.si || '', 1.0));
+btnSlow?.addEventListener('click', () => speak(CARDS[i]?.si || '', 0.75));
+btnNext?.addEventListener('click', () => {
+  i++;
+  if (i >= CARDS.length) { finishLesson(); return; }
+  loadCard();
+});
+btnCheck?.addEventListener('click', doCheck);
+btnOpenGT?.addEventListener('click', () => window.open('https://translate.google.com/?sl=si&tl=en', '_blank', 'noopener,noreferrer'));
+btnPasteCheck?.addEventListener('click', async () => {
   try { const clip = await navigator.clipboard.readText(); if (clip && clip.trim()) { heard.value = clip.trim(); doCheck(); } else { alert('Clipboard is empty.'); } }
   catch { alert('Allow paste permission and try again.'); }
 });
+
+navHome?.addEventListener('click', (e)=>{ e.preventDefault(); switchView('home'); });
+backHome?.addEventListener('click', ()=> switchView('home'));
+
+/* ======================
+   VIEW ROUTER
+   ====================== */
+function switchView(name){
+  viewHome.classList.remove('active');
+  viewLesson.classList.remove('active');
+  if (name==='home') viewHome.classList.add('active');
+  else viewLesson.classList.add('active');
+}
 
 /* ======================
    STARTUP
    ====================== */
 function init() {
-  loadCard();
-  // If you use the ?heard=... Shortcut flow, keep this tiny helper:
+  updateHUD();
+  renderHome();
+  // optional URL handoff (?heard=)
   const url = new URL(window.location.href.replace('#','?'));
   const incoming = url.searchParams.get('heard');
   if (incoming) {
     heard.value = decodeURIComponent(incoming).trim();
+    switchView('lesson');
     doCheck();
     history.replaceState({}, '', location.pathname);
   }
