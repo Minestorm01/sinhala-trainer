@@ -1,0 +1,44 @@
+{
+  "id": "lesson-03",
+  "title": "Polite responses",
+  "newVocab": [
+    {
+      "si": "ස්තූතියි",
+      "en": "Thank you"
+    },
+    {
+      "si": "කරුණාකර",
+      "en": "Please"
+    },
+    {
+      "si": "සමාවෙන්න",
+      "en": "Sorry"
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex1",
+      "type": "MATCH_PAIRS",
+      "pairs": [
+        {
+          "si": "ස්තූතියි",
+          "en": "Thank you"
+        },
+        {
+          "si": "කරුණාකර",
+          "en": "Please"
+        },
+        {
+          "si": "සමාවෙන්න",
+          "en": "Sorry"
+        }
+      ]
+    },
+    {
+      "id": "ex2",
+      "type": "TRANSLATE_TO_EN",
+      "source": "කරුණාකර",
+      "solution": "Please"
+    }
+  ]
+}

@@ -1,0 +1,41 @@
+{
+  "id": "lesson-02",
+  "title": "How are you?",
+  "newVocab": [
+    {
+      "si": "ඔයා කොහොමද?",
+      "en": "How are you?"
+    },
+    {
+      "si": "මම හොඳයි",
+      "en": "I am good"
+    },
+    {
+      "si": "සාමාන්‍යයි",
+      "en": "So-so"
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex1",
+      "type": "TRANSLATE_TO_EN",
+      "source": "ඔයා කොහොමද?",
+      "solution": "How are you?"
+    },
+    {
+      "id": "ex2",
+      "type": "TRANSLATE_TO_SI",
+      "source": "I am good",
+      "solution": "මම හොඳයි"
+    },
+    {
+      "id": "ex3",
+      "type": "TAP_TILES",
+      "solution": "ඔයා කොහොමද?",
+      "tiles": [
+        "ඔයා",
+        "කොහොමද?"
+      ]
+    }
+  ]
+}

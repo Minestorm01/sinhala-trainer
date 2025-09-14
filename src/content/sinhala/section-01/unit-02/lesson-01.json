@@ -1,0 +1,33 @@
+{
+  "id": "lesson-01",
+  "title": "Names",
+  "newVocab": [
+    {
+      "si": "මගේ නම ... යි",
+      "en": "My name is ..."
+    },
+    {
+      "si": "ඔයාගේ නම මොකද්ද?",
+      "en": "What is your name?"
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex1",
+      "type": "TRANSLATE_TO_SI",
+      "source": "My name is Sam.",
+      "solution": "මගේ නම සෑම් යි"
+    },
+    {
+      "id": "ex2",
+      "type": "FILL_BLANK",
+      "sentence": "ඔයාගේ නම ___?",
+      "solution": "මොකද්ද",
+      "options": [
+        "මොකද්ද",
+        "කොහේද",
+        "කවුද"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,80 @@
+{
+  "id": "lesson-01",
+  "title": "Hello / Goodbye",
+  "newVocab": [
+    {
+      "si": "ආයුබෝවන්",
+      "en": "Hello (formal)"
+    },
+    {
+      "si": "හෙලෝ",
+      "en": "Hello"
+    },
+    {
+      "si": "ගුඩ් බයි",
+      "en": "Goodbye"
+    }
+  ],
+  "tips": [
+    "Sinhala sentences are usually SOV (subject–object–verb).",
+    "Drop the subject when it's obvious."
+  ],
+  "exercises": [
+    {
+      "id": "ex1",
+      "type": "MATCH_PAIRS",
+      "prompt": "Match greetings",
+      "pairs": [
+        {
+          "si": "ආයුබෝවන්",
+          "en": "Hello (formal)"
+        },
+        {
+          "si": "හෙලෝ",
+          "en": "Hello"
+        },
+        {
+          "si": "ගුඩ් බයි",
+          "en": "Goodbye"
+        }
+      ]
+    },
+    {
+      "id": "ex2",
+      "type": "TAP_TILES",
+      "prompt": "Build the sentence",
+      "solution": "මම හොඳයි",
+      "translation": "I am good",
+      "tiles": [
+        "මම",
+        "හොඳයි"
+      ]
+    },
+    {
+      "id": "ex3",
+      "type": "TRANSLATE_TO_SI",
+      "prompt": "Translate to Sinhala",
+      "source": "How are you?",
+      "solution": "ඔයා කොහොමද?"
+    },
+    {
+      "id": "ex4",
+      "type": "TRANSLATE_TO_EN",
+      "prompt": "Translate to English",
+      "source": "ස්තූතියි",
+      "solution": "Thank you"
+    },
+    {
+      "id": "ex5",
+      "type": "FILL_BLANK",
+      "prompt": "Fill the blank",
+      "sentence": "මම ___",
+      "solution": "හොඳයි",
+      "options": [
+        "හොඳයි",
+        "බත්",
+        "කනවා"
+      ]
+    }
+  ]
+}

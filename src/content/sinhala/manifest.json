@@ -1,0 +1,40 @@
+{
+  "id": "sinhala",
+  "title": "Sinhala",
+  "sections": [
+    {
+      "id": "section-01",
+      "title": "Foundations",
+      "units": [
+        {
+          "id": "unit-01",
+          "title": "Greetings & Essentials",
+          "lessons": [
+            {
+              "id": "lesson-01",
+              "title": "Hello / Goodbye"
+            },
+            {
+              "id": "lesson-02",
+              "title": "How are you?"
+            },
+            {
+              "id": "lesson-03",
+              "title": "Polite responses"
+            }
+          ]
+        },
+        {
+          "id": "unit-02",
+          "title": "Introducing Yourself",
+          "lessons": [
+            {
+              "id": "lesson-01",
+              "title": "Names"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
