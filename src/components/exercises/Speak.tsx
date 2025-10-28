@@ -8,10 +8,13 @@ declare global {
 export default function Speak({ data, onCorrect, onNext }: {
   data: T; onCorrect: () => void; onNext: () => void;
 }) {
+  const unsupportedMessage =
+    "Speech recognition is not available in this browser. Try using the latest version of Chrome on desktop or Android.";
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState<string>("");
   const [done, setDone] = useState<null | boolean>(null);
   const [error, setError] = useState<string | null>(null);
+  const [supported, setSupported] = useState(true);
   const recRef = useRef<any>(null);
 
   const target = useMemo(() => normalize(data.phrase), [data.phrase]);
@@ -19,7 +22,13 @@ export default function Speak({ data, onCorrect, onNext }: {
 
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
+    if (!SR) {
+      setSupported(false);
+      setError(unsupportedMessage);
+      return;
+    }
+    setSupported(true);
+    setError(null);
     const rec = new SR();
     rec.lang = "si-LK";
     rec.interimResults = false;
@@ -49,8 +58,8 @@ export default function Speak({ data, onCorrect, onNext }: {
   }, [target, threshold, onCorrect]);
 
   const start = () => {
-    if (!recRef.current) {
-      setError("Speech recognition is not supported in this browser.");
+    if (!recRef.current || !supported) {
+      setError(unsupportedMessage);
       return;
     }
     setDone(null); setHeard(""); setError(null); setListening(true);
@@ -66,7 +75,11 @@ export default function Speak({ data, onCorrect, onNext }: {
     <div>
       <p className="mb-2">Say this in Sinhala:</p>
       <p className="mb-4 text-lg font-semibold">{data.phrase}</p>
-      <button onClick={start} className={`px-4 py-2 rounded border ${listening ? "bg-red-50 border-red-300" : ""}`} disabled={listening}>
+      <button
+        onClick={start}
+        className={`px-4 py-2 rounded border ${listening ? "bg-red-50 border-red-300" : ""}`}
+        disabled={listening || !supported}
+      >
         {listening ? "Listening…" : "Start"}
       </button>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
