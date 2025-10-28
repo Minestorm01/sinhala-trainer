@@ -11,6 +11,7 @@ export default function Speak({ data, onCorrect, onNext }: {
   const [listening, setListening] = useState(false);
   const [heard, setHeard] = useState<string>("");
   const [done, setDone] = useState<null | boolean>(null);
+  const [error, setError] = useState<string | null>(null);
   const recRef = useRef<any>(null);
 
   const target = useMemo(() => normalize(data.phrase), [data.phrase]);
@@ -32,17 +33,33 @@ export default function Speak({ data, onCorrect, onNext }: {
       setDone(ok);
       if (ok) onCorrect();
       setListening(false);
+      setError(null);
     };
-    rec.onerror = () => setListening(false);
+    rec.onerror = (event: any) => {
+      setListening(false);
+      const type = event?.error;
+      if (type === "not-allowed") setError("Microphone permission was denied. Please allow access and try again.");
+      else if (type === "no-speech") setError("No speech was detected. Please try speaking again.");
+      else if (type === "audio-capture") setError("No microphone was found. Check your audio input device.");
+      else setError("Speech recognition encountered an error. Please try again.");
+    };
     rec.onend = () => setListening(false);
     recRef.current = rec;
     return () => { try { rec.stop(); } catch {} };
   }, [target, threshold, onCorrect]);
 
   const start = () => {
-    if (!recRef.current) { alert("Speech recognition not supported in this browser."); return; }
-    setDone(null); setHeard(""); setListening(true);
-    try { recRef.current.start(); } catch {}
+    if (!recRef.current) {
+      setError("Speech recognition is not supported in this browser.");
+      return;
+    }
+    setDone(null); setHeard(""); setError(null); setListening(true);
+    try {
+      recRef.current.start();
+    } catch (err: any) {
+      setListening(false);
+      setError(err?.message ?? "Unable to start speech recognition.");
+    }
   };
 
   return (
@@ -52,6 +69,7 @@ export default function Speak({ data, onCorrect, onNext }: {
       <button onClick={start} className={`px-4 py-2 rounded border ${listening ? "bg-red-50 border-red-300" : ""}`} disabled={listening}>
         {listening ? "Listening…" : "Start"}
       </button>
+      {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
       {heard && <div className="mt-3 text-sm"><span className="opacity-60">Heard: </span><span>{heard}</span></div>}
       {done !== null && (
         <div className="mt-4">
